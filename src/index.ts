@@ -5,10 +5,11 @@ import { Command, SlashCommand } from './types';
 // import commands
 import * as pingCommand from './commands/ping';
 import * as echoCommand from './commands/echo';
+import * as pwdCommand from './commands/pwd';
 
 config();
 // for that VIM baby
-const PREFIX = ':';
+const PREFIX = '::';
 
 declare module 'discord.js' {
     interface Client {
@@ -30,13 +31,13 @@ client.commands = new Collection<string, Command>();
 client.slashCommands = new Collection<string, SlashCommand>();
 
 // register prefix commands
-const prefixCommands: Command[] = [pingCommand, echoCommand];
+const prefixCommands: Command[] = [pingCommand, echoCommand, pwdCommand];
 for (const cmd of prefixCommands) {
     client.commands.set(cmd.name, cmd);
 }
 
 // register slash commands
-const slashCommands: SlashCommand[] = [pingCommand, echoCommand];
+const slashCommands: SlashCommand[] = [pingCommand, echoCommand, pwdCommand];
 for (const cmd of slashCommands) {
     client.slashCommands.set(cmd.data.name, cmd);
 }
