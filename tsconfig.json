@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig.json",
+  "compilerOptions": {
+    // Target the correct JavaScript version for Node.js
+    "target": "ESNext",
+    // Use ES Modules and Node's resolution strategy
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    
+    // Output directory for compiled files
+    "outDir": "./dist",
+    // Enable strict type checking
+    "strict": true,
+    // Allows importing JSON files
+    "resolveJsonModule": true,
+    // Forces consistent casing in file names
+    "forceConsistentCasingInFileNames": true,
+    // Skip type checking of declaration files (faster compilation)
+    "skipLibCheck": true,
+    // Helps with CommonJS/ESM interop (can be useful but not always required with NodeNext/Bundler)
+    "esModuleInterop": true
+  },
+  "include": ["src/**/*"], // Include all files in the src directory
+  "exclude": ["node_modules"] // Exclude the node modules folder
+}
+
