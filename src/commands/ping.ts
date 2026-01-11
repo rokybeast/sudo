@@ -2,6 +2,7 @@ import { Message, ChatInputCommandInteraction, SlashCommandBuilder } from 'disco
 
 export const name = 'ping';
 export const description = 'Check bot latency and API ping';
+export const aliases = ['latency'];
 
 export const data = new SlashCommandBuilder()
     .setName(name)

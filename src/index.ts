@@ -37,9 +37,14 @@ for (const file of commandFiles) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const command = require(filePath);
 
-    // Set a new item in the Collection with the key as the command name and the value as the exported module
+    // register command and aliases
     if ('name' in command && 'execute' in command) {
         client.commands.set(command.name, command);
+        if (command.aliases && Array.isArray(command.aliases)) {
+            command.aliases.forEach((alias: string) => {
+                client.commands.set(alias, command);
+            });
+        }
     } else {
         console.log(`[WARNING] The command at ${filePath} is missing a required "name" or "execute" property.`);
     }

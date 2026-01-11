@@ -2,6 +2,7 @@ import { Message, ChatInputCommandInteraction, SlashCommandBuilder } from 'disco
 
 export const name = 'pwd';
 export const description = 'Print current guild and channel name';
+export const aliases = ['curdir'];
 
 export const data = new SlashCommandBuilder()
     .setName(name)
