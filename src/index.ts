@@ -2,10 +2,8 @@ import { Client, GatewayIntentBits, Events, Collection, REST, Routes } from 'dis
 import { config } from 'dotenv';
 import { Command, SlashCommand } from './types';
 
-// import commands
-import * as pingCommand from './commands/ping';
-import * as echoCommand from './commands/echo';
-import * as pwdCommand from './commands/pwd';
+import fs from 'fs';
+import path from 'path';
 
 config();
 // for that VIM baby
@@ -30,16 +28,28 @@ const client = new Client({
 client.commands = new Collection<string, Command>();
 client.slashCommands = new Collection<string, SlashCommand>();
 
-// register prefix commands
-const prefixCommands: Command[] = [pingCommand, echoCommand, pwdCommand];
-for (const cmd of prefixCommands) {
-    client.commands.set(cmd.name, cmd);
-}
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith('.ts') || file.endsWith('.js'));
+const slashCommandData: any[] = [];
 
-// register slash commands
-const slashCommands: SlashCommand[] = [pingCommand, echoCommand, pwdCommand];
-for (const cmd of slashCommands) {
-    client.slashCommands.set(cmd.data.name, cmd);
+for (const file of commandFiles) {
+    const filePath = path.join(commandsPath, file);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const command = require(filePath);
+
+    // Set a new item in the Collection with the key as the command name and the value as the exported module
+    if ('name' in command && 'execute' in command) {
+        client.commands.set(command.name, command);
+    } else {
+        console.log(`[WARNING] The command at ${filePath} is missing a required "name" or "execute" property.`);
+    }
+
+    if ('data' in command && 'executeSlash' in command) {
+        client.slashCommands.set(command.data.name, command);
+        slashCommandData.push(command.data.toJSON());
+    } else {
+        console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "executeSlash" property.`);
+    }
 }
 
 // bot ready event
@@ -49,12 +59,11 @@ client.once(Events.ClientReady, async (readyClient) => {
 
     // register slash commands
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN!);
-    const commandData = slashCommands.map((cmd) => cmd.data.toJSON());
 
     try {
         console.log('[INFO]: Registering slash commands...');
         await rest.put(Routes.applicationCommands(readyClient.user.id), {
-            body: commandData,
+            body: slashCommandData,
         });
         console.log('[OK]: Slash commands registered successfully!');
     } catch (error) {
