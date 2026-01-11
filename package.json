@@ -1,22 +1,24 @@
 {
   "name": "sudo",
   "version": "1.0.0",
-  "description": "bot, frfr",
+  "description": "gooner bot, frfr",
   "license": "MIT",
-  "author": "me",
+  "author": "rokybeast",
   "type": "commonjs",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "test": "echo gooner"
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "npx tsx watch src/index.ts",
+    "test": "echo No Tests"
   },
   "dependencies": {
-    "discord.js": "^14.25.1",
-    "dotenv": "^17.2.3"
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1"
   },
   "devDependencies": {
-    "@types/node": "^25.0.6",
-    "nodemon": "^3.1.11",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
   }
 }
