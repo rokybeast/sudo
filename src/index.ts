@@ -87,13 +87,22 @@ client.on(Events.MessageCreate, async (message) => {
     if (!commandName) return;
 
     const command = client.commands.get(commandName);
-    if (!command) return;
+    if (!command) {
+        await message.reply(`[BotError]: Command not found: ${commandName}`);
+        return;
+    }
 
     try {
         await command.execute(message, args);
     } catch (error) {
         console.error(`[ERROR]: Error executing command ${commandName}:`, error);
-        await message.reply('[ERROR]: There was an error executing that command!');
+
+        let errorMessage = `[BotError]: An unexpected error occurred.`;
+        if (error instanceof Error) {
+            errorMessage = `[${commandName}]: ${error.message}`;
+        }
+
+        await message.reply(errorMessage);
     }
 });
 

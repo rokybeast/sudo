@@ -15,8 +15,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(message: Message, args: string[]): Promise<void> {
     if (args.length === 0) {
-        await message.reply('say something dummy`');
-        return;
+        throw new Error('Parameter not found: message');
     }
 
     const echoMessage = args.join(' ');

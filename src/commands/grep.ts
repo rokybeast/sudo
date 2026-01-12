@@ -47,8 +47,7 @@ export async function execute(message: Message, args: string[]): Promise<void> {
     });
 
     if (cleanArgs.length === 0) {
-        await message.reply('Usage: `grep [-i] <pattern> [limit]`');
-        return;
+        throw new Error('Parameter not found: pattern');
     }
 
     const pattern = cleanArgs[0];
