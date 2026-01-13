@@ -44,7 +44,7 @@ export async function execute(message: Message, args: string[]): Promise<void> {
             { name: 'Description', value: command.description, inline: true },
             { name: 'Aliases', value: command.aliases ? command.aliases.map((a) => `\`${a}\``).join(', ') : 'None', inline: true }
         )
-        .setColor(0x0099ff);
+        .setColor(0x000000);
 
     await message.reply({ embeds: [embed] });
 }
@@ -58,7 +58,7 @@ export async function executeSlash(interaction: ChatInputCommandInteraction): Pr
         const embed = new EmbedBuilder()
             .setTitle('ManDB')
             .setDescription(`Here are the available commands:\n${commandList}\n\nUse \`/man <command>\` for more info.`)
-            .setColor(0x0099ff);
+            .setColor(0x000000);
 
         await interaction.reply({ embeds: [embed] });
         return;
@@ -80,7 +80,7 @@ export async function executeSlash(interaction: ChatInputCommandInteraction): Pr
             { name: 'Description', value: command.description, inline: true },
             { name: 'Aliases', value: command.aliases ? command.aliases.map((a) => `\`${a}\``).join(', ') : 'None', inline: true }
         )
-        .setColor(0x0099ff);
+        .setColor(0x000000);
 
     await interaction.reply({ embeds: [embed] });
 }

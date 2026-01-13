@@ -44,13 +44,13 @@ async function sendTop(context: Message | ChatInputCommandInteraction, view: str
     const client = context.client;
 
     if (!guild) {
-        const reply = '❌ This command can only be used in a server.';
+        const reply = 'This command can only be used in a server.';
         if (context instanceof Message) await context.reply(reply);
         else await context.editReply(reply);
         return;
     }
 
-    const embed = new EmbedBuilder().setColor(0x0099ff).setTimestamp();
+    const embed = new EmbedBuilder().setColor(0x000000).setTimestamp();
 
     // Views
     if (view === 'system' || view.startsWith('sys')) {
@@ -79,7 +79,7 @@ async function sendTop(context: Message | ChatInputCommandInteraction, view: str
 
     } else if (view === 'users' || view.startsWith('user')) {
         const totalUsers = guild.memberCount;
-        await guild.members.fetch(); // Ensure cache is populated
+        await guild.members.fetch();
         const humans = guild.members.cache.filter(m => !m.user.bot).size;
         const bots = guild.members.cache.filter(m => m.user.bot).size;
 
