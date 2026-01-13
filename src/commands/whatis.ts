@@ -15,7 +15,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(message: Message, args: string[]): Promise<void> {
     if (!args.length) {
-        await message.reply('usage: whatis <command>');
+        await message.reply('whatis what?');
         return;
     }
 
