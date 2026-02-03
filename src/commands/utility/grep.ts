@@ -111,9 +111,16 @@ async function performGrep(
 
         // Build output
         const results = matches.map(msg => {
-            const content = msg.content.length > 50
+            let content = msg.content.length > 50
                 ? msg.content.substring(0, 50).replace(/\n/g, ' ') + '...'
                 : msg.content.replace(/\n/g, ' ');
+
+            // escape mentions to prevent pings
+            content = content
+                .replace(/<@!?(\d+)>/g, '<@\u200B$1>')  // user mentions
+                .replace(/<@&(\d+)>/g, '<@\u200B&$1>')  // role mentions
+                .replace(/@(everyone|here)/g, '@\u200B$1');  // @everyone/@here
+
             return `[${msg.author.username}]: ${content} ([Jump](${msg.url}))`;
         });
 
