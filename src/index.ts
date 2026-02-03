@@ -29,33 +29,56 @@ client.commands = new Collection<string, Command>();
 client.slashCommands = new Collection<string, SlashCommand>();
 
 const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith('.ts') || file.endsWith('.js'));
 const slashCommandData: any[] = [];
 
-for (const file of commandFiles) {
-    const filePath = path.join(commandsPath, file);
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const command = require(filePath);
+const folders = fs.readdirSync(commandsPath).filter((item) => {
+    const itemPath = path.join(commandsPath, item);
+    return fs.statSync(itemPath).isDirectory();
+});
 
-    // register command and aliases
-    if ('name' in command && 'execute' in command) {
-        client.commands.set(command.name, command);
-        if (command.aliases && Array.isArray(command.aliases)) {
-            command.aliases.forEach((alias: string) => {
-                client.commands.set(alias, command);
-            });
+console.log('\nLoading commands...\n');
+
+let totalCommands = 0;
+const totalFolders = folders.length;
+
+for (let i = 0; i < folders.length; i++) {
+    const folder = folders[i];
+    const folderPath = path.join(commandsPath, folder);
+    const commandFiles = fs.readdirSync(folderPath).filter((file) => file.endsWith('.ts') || file.endsWith('.js'));
+
+    let folderCommandCount = 0;
+
+    for (const file of commandFiles) {
+        const filePath = path.join(folderPath, file);
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const command = require(filePath);
+
+        // register command and aliases
+        if ('name' in command && 'execute' in command) {
+            client.commands.set(command.name, command);
+            if (command.aliases && Array.isArray(command.aliases)) {
+                command.aliases.forEach((alias: string) => {
+                    client.commands.set(alias, command);
+                });
+            }
+            folderCommandCount++;
+        } else {
+            console.log(`  [WARNING] The command at ${filePath} is missing a required "name" or "execute" property.`);
         }
-    } else {
-        console.log(`[WARNING] The command at ${filePath} is missing a required "name" or "execute" property.`);
+
+        if ('data' in command && 'executeSlash' in command) {
+            client.slashCommands.set(command.data.name, command);
+            slashCommandData.push(command.data.toJSON());
+        } else {
+            console.log(`  [WARNING] The command at ${filePath} is missing a required "data" or "executeSlash" property.`);
+        }
     }
 
-    if ('data' in command && 'executeSlash' in command) {
-        client.slashCommands.set(command.data.name, command);
-        slashCommandData.push(command.data.toJSON());
-    } else {
-        console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "executeSlash" property.`);
-    }
+    totalCommands += folderCommandCount;
+    console.log(`[${i + 1}/${totalFolders}] ${folder}/ → ${folderCommandCount} command${folderCommandCount !== 1 ? 's' : ''} loaded`);
 }
+
+console.log(`\nAll folders loaded (${totalCommands} commands total)\n`);
 
 // bot ready event
 client.once(Events.ClientReady, async (readyClient) => {
