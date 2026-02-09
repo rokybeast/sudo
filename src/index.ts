@@ -50,13 +50,27 @@ export function loadFolder(folderName: string): { loaded: string[]; errors: stri
     return { loaded, errors };
   }
 
-  const commandFiles = fs
-    .readdirSync(folderPath)
-    .filter((file) => file.endsWith(".ts") || file.endsWith(".js"));
+  function getCommandFiles(dir: string): string[] {
+    const files: string[] = [];
+    const items = fs.readdirSync(dir);
 
-  for (const file of commandFiles) {
-    const filePath = path.join(folderPath, file);
+    for (const item of items) {
+      const itemPath = path.join(dir, item);
+      const stat = fs.statSync(itemPath);
 
+      if (stat.isDirectory()) {
+        files.push(...getCommandFiles(itemPath));
+      } else if (item.endsWith(".ts") || item.endsWith(".js")) {
+        files.push(itemPath);
+      }
+    }
+
+    return files;
+  }
+
+  const commandFiles = getCommandFiles(folderPath);
+
+  for (const filePath of commandFiles) {
     delete require.cache[require.resolve(filePath)];
 
     try {
@@ -71,14 +85,14 @@ export function loadFolder(folderName: string): { loaded: string[]; errors: stri
         }
         loaded.push(command.name);
       } else {
-        errors.push(`${file}: missing name/execute`);
+        errors.push(`${path.basename(filePath)}: missing name/execute`);
       }
 
       if ("data" in command && "executeSlash" in command) {
         client.slashCommands.set(command.data.name, command);
       }
     } catch (err) {
-      errors.push(`${file}: ${err instanceof Error ? err.message : 'unknown error'}`);
+      errors.push(`${path.basename(filePath)}: ${err instanceof Error ? err.message : 'unknown error'}`);
     }
   }
 
@@ -96,13 +110,27 @@ export function unloadFolder(folderName: string): { unloaded: string[]; errors: 
     return { unloaded, errors };
   }
 
-  const commandFiles = fs
-    .readdirSync(folderPath)
-    .filter((file) => file.endsWith(".ts") || file.endsWith(".js"));
+  function getCommandFiles(dir: string): string[] {
+    const files: string[] = [];
+    const items = fs.readdirSync(dir);
 
-  for (const file of commandFiles) {
-    const filePath = path.join(folderPath, file);
+    for (const item of items) {
+      const itemPath = path.join(dir, item);
+      const stat = fs.statSync(itemPath);
 
+      if (stat.isDirectory()) {
+        files.push(...getCommandFiles(itemPath));
+      } else if (item.endsWith(".ts") || item.endsWith(".js")) {
+        files.push(itemPath);
+      }
+    }
+
+    return files;
+  }
+
+  const commandFiles = getCommandFiles(folderPath);
+
+  for (const filePath of commandFiles) {
     try {
       const command = require(filePath);
 
@@ -122,7 +150,7 @@ export function unloadFolder(folderName: string): { unloaded: string[]; errors: 
 
       delete require.cache[require.resolve(filePath)];
     } catch (err) {
-      errors.push(`${file}: ${err instanceof Error ? err.message : 'unknown error'}`);
+      errors.push(`${path.basename(filePath)}: ${err instanceof Error ? err.message : 'unknown error'}`);
     }
   }
 
@@ -171,17 +199,32 @@ const folders = getCommandFolders();
 let totalCommands = 0;
 const totalFolders = folders.length;
 
+function getCommandFilesRecursive(dir: string): string[] {
+  const files: string[] = [];
+  const items = fs.readdirSync(dir);
+
+  for (const item of items) {
+    const itemPath = path.join(dir, item);
+    const stat = fs.statSync(itemPath);
+
+    if (stat.isDirectory()) {
+      files.push(...getCommandFilesRecursive(itemPath));
+    } else if (item.endsWith(".ts") || item.endsWith(".js")) {
+      files.push(itemPath);
+    }
+  }
+
+  return files;
+}
+
 for (let i = 0; i < folders.length; i++) {
   const folder = folders[i];
   const folderPath = path.join(commandsPath, folder);
-  const commandFiles = fs
-    .readdirSync(folderPath)
-    .filter((file) => file.endsWith(".ts") || file.endsWith(".js"));
+  const commandFiles = getCommandFilesRecursive(folderPath);
 
   let folderCommandCount = 0;
 
-  for (const file of commandFiles) {
-    const filePath = path.join(folderPath, file);
+  for (const filePath of commandFiles) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const command = require(filePath);
 
