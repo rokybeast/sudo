@@ -1,9 +1,9 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import fetch from 'node-fetch';
 
-export const name = 'yay';
+export const name = 'aur';
 export const description = 'Search for a package in the AUR (Arch User Repository)';
-export const aliases = ['aur'];
+export const aliases = ['yay', 'paru'];
 
 export const data = new SlashCommandBuilder()
     .setName(name)
