@@ -8,12 +8,13 @@ import {
 } from "discord.js";
 import { config } from "dotenv";
 import { Command, SlashCommand } from "./types";
-import { prefix } from "./config/config.json";
+import { prefix, owners } from "./config/config.json";
 
 import fs from "fs";
 import path from "path";
 
 config();
+
 declare module "discord.js" {
   interface Client {
     commands: Collection<string, Command>;
@@ -21,11 +22,12 @@ declare module "discord.js" {
   }
 }
 
-const client = new Client({
+export const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates,
   ],
 });
 
@@ -36,13 +38,136 @@ client.slashCommands = new Collection<string, SlashCommand>();
 const commandsPath = path.join(__dirname, "commands");
 const slashCommandData: any[] = [];
 
-const folders = fs.readdirSync(commandsPath).filter((item) => {
-  const itemPath = path.join(commandsPath, item);
-  return fs.statSync(itemPath).isDirectory();
-});
+const loadedFolders = new Set<string>();
+
+export function loadFolder(folderName: string): { loaded: string[]; errors: string[] } {
+  const folderPath = path.join(commandsPath, folderName);
+  const loaded: string[] = [];
+  const errors: string[] = [];
+
+  if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+    errors.push(`Folder '${folderName}' does not exist`);
+    return { loaded, errors };
+  }
+
+  const commandFiles = fs
+    .readdirSync(folderPath)
+    .filter((file) => file.endsWith(".ts") || file.endsWith(".js"));
+
+  for (const file of commandFiles) {
+    const filePath = path.join(folderPath, file);
+
+    delete require.cache[require.resolve(filePath)];
+
+    try {
+      const command = require(filePath);
+
+      if ("name" in command && "execute" in command) {
+        client.commands.set(command.name, command);
+        if (command.aliases && Array.isArray(command.aliases)) {
+          command.aliases.forEach((alias: string) => {
+            client.commands.set(alias, command);
+          });
+        }
+        loaded.push(command.name);
+      } else {
+        errors.push(`${file}: missing name/execute`);
+      }
+
+      if ("data" in command && "executeSlash" in command) {
+        client.slashCommands.set(command.data.name, command);
+      }
+    } catch (err) {
+      errors.push(`${file}: ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
+  }
+
+  loadedFolders.add(folderName);
+  return { loaded, errors };
+}
+
+export function unloadFolder(folderName: string): { unloaded: string[]; errors: string[] } {
+  const folderPath = path.join(commandsPath, folderName);
+  const unloaded: string[] = [];
+  const errors: string[] = [];
+
+  if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+    errors.push(`Folder '${folderName}' does not exist`);
+    return { unloaded, errors };
+  }
+
+  const commandFiles = fs
+    .readdirSync(folderPath)
+    .filter((file) => file.endsWith(".ts") || file.endsWith(".js"));
+
+  for (const file of commandFiles) {
+    const filePath = path.join(folderPath, file);
+
+    try {
+      const command = require(filePath);
+
+      if ("name" in command) {
+        client.commands.delete(command.name);
+        if (command.aliases && Array.isArray(command.aliases)) {
+          command.aliases.forEach((alias: string) => {
+            client.commands.delete(alias);
+          });
+        }
+        unloaded.push(command.name);
+      }
+
+      if ("data" in command) {
+        client.slashCommands.delete(command.data.name);
+      }
+
+      delete require.cache[require.resolve(filePath)];
+    } catch (err) {
+      errors.push(`${file}: ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
+  }
+
+  loadedFolders.delete(folderName);
+  return { unloaded, errors };
+}
+
+export function reloadAllCommands(): { total: number; units: number; errors: string[] } {
+  const errors: string[] = [];
+
+  client.commands.clear();
+  client.slashCommands.clear();
+  loadedFolders.clear();
+
+  const folders = fs.readdirSync(commandsPath).filter((item) => {
+    const itemPath = path.join(commandsPath, item);
+    return fs.statSync(itemPath).isDirectory();
+  });
+
+  let total = 0;
+
+  for (const folder of folders) {
+    const result = loadFolder(folder);
+    total += result.loaded.length;
+    errors.push(...result.errors);
+  }
+
+  return { total, units: folders.length, errors };
+}
+
+
+export function getCommandFolders(): string[] {
+  return fs.readdirSync(commandsPath).filter((item) => {
+    const itemPath = path.join(commandsPath, item);
+    return fs.statSync(itemPath).isDirectory();
+  });
+}
+
+export function isOwner(userId: string): boolean {
+  return owners.includes(userId);
+}
 
 console.log("\nLoading commands...\n");
 
+const folders = getCommandFolders();
 let totalCommands = 0;
 const totalFolders = folders.length;
 
@@ -85,6 +210,7 @@ for (let i = 0; i < folders.length; i++) {
     }
   }
 
+  loadedFolders.add(folder);
   totalCommands += folderCommandCount;
   console.log(
     `[${i + 1}/${totalFolders}] ${folder}/ → ${folderCommandCount} command${folderCommandCount !== 1 ? "s" : ""} loaded`,
