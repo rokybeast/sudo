@@ -1,6 +1,9 @@
-import { Message, ChatInputCommandInteraction, SlashCommandBuilder, AttachmentBuilder, GuildMember } from 'discord.js';
-import { createCanvas, loadImage } from '@napi-rs/canvas';
+import { Message, ChatInputCommandInteraction, SlashCommandBuilder, AttachmentBuilder, GuildMember, TextChannel } from 'discord.js';
+import { createCanvas, loadImage, Image } from '@napi-rs/canvas';
 import fetch from 'node-fetch';
+import GIFEncoder from 'gifencoder';
+import gifFrames from 'gif-frames';
+import { Stream } from 'stream';
 
 export const name = 'quote';
 export const description = 'Generate a quote image from a message';
@@ -12,7 +15,7 @@ export const data = new SlashCommandBuilder()
     .addStringOption((option) =>
         option
             .setName('message')
-            .setDescription('Message ID or message link to quote')
+            .setDescription('Message ID, link, or text to quote')
             .setRequired(true)
     );
 
@@ -27,6 +30,17 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 
 function getLuminance(r: number, g: number, b: number): number {
     return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+function getDominantColor(image: Image): { r: number, g: number, b: number } {
+    const canvas = createCanvas(1, 1);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(image, 0, 0, 1, 1);
+    const data = ctx.getImageData(0, 0, 1, 1).data;
+    const r = data[0];
+    const g = data[1];
+    const b = data[2];
+    return { r, g, b };
 }
 
 function wrapText(ctx: any, text: string, maxWidth: number): string[] {
@@ -80,56 +94,92 @@ function wrapText(ctx: any, text: string, maxWidth: number): string[] {
     return lines;
 }
 
-function parseMarkdown(text: string): { text: string; bold: boolean; italic: boolean; code: boolean }[] {
-    const segments: { text: string; bold: boolean; italic: boolean; code: boolean }[] = [];
-
-    let remaining = text;
-
-    while (remaining.length > 0) {
-        const boldMatch = remaining.match(/^\*\*(.+?)\*\*/);
-        if (boldMatch) {
-            segments.push({ text: boldMatch[1], bold: true, italic: false, code: false });
-            remaining = remaining.slice(boldMatch[0].length);
-            continue;
-        }
-
-        const italicMatch = remaining.match(/^\*(.+?)\*/);
-        if (italicMatch) {
-            segments.push({ text: italicMatch[1], bold: false, italic: true, code: false });
-            remaining = remaining.slice(italicMatch[0].length);
-            continue;
-        }
-
-        const codeMatch = remaining.match(/^`(.+?)`/);
-        if (codeMatch) {
-            segments.push({ text: codeMatch[1], bold: false, italic: false, code: true });
-            remaining = remaining.slice(codeMatch[0].length);
-            continue;
-        }
-
-        const nextSpecial = remaining.search(/[\*`]/);
-        if (nextSpecial === -1) {
-            segments.push({ text: remaining, bold: false, italic: false, code: false });
-            break;
-        } else if (nextSpecial === 0) {
-            segments.push({ text: remaining[0], bold: false, italic: false, code: false });
-            remaining = remaining.slice(1);
-        } else {
-            segments.push({ text: remaining.slice(0, nextSpecial), bold: false, italic: false, code: false });
-            remaining = remaining.slice(nextSpecial);
-        }
-    }
-
-    return segments;
+interface QuoteOptions {
+    content: string;
+    username: string;
+    avatarUrl: string;
+    userColor: string;
+    timestamp: Date;
+    attachmentUrl?: string;
+    isGif?: boolean;
 }
 
-async function generateQuoteImage(
-    content: string,
-    username: string,
-    avatarUrl: string,
-    userColor: string,
-    timestamp: Date
-): Promise<Buffer> {
+async function drawQuoteCard(
+    ctx: any,
+    width: number,
+    height: number,
+    options: QuoteOptions,
+    avatarImage: Image,
+    dominantColor: { r: number, g: number, b: number },
+    wrappedLines: string[],
+    attrLines: string[],
+    attachmentImage?: Image,
+    attachmentHeight: number = 0
+) {
+    const { r, g, b } = dominantColor;
+    const luminance = getLuminance(r, g, b);
+
+    const gradient = ctx.createLinearGradient(0, 0, width, 0);
+    gradient.addColorStop(0, `rgba(${Math.min(255, r + 40)}, ${Math.min(255, g + 40)}, ${Math.min(255, b + 40)}, 1)`);
+    gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 1)`);
+    gradient.addColorStop(1, `rgba(${Math.max(0, r - 60)}, ${Math.max(0, g - 60)}, ${Math.max(0, b - 60)}, 1)`);
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+
+    const textColor = luminance > 0.5 ? '#000000' : '#ffffff';
+    const subtextColor = luminance > 0.5 ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.7)';
+
+    const padding = 40;
+    const avatarSize = 64;
+    const fontSize = 20;
+    const lineHeight = fontSize * 1.4;
+    const attrFontSize = 16;
+    const attrLineHeight = attrFontSize * 1.4;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(padding + avatarSize / 2, padding + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(avatarImage, padding, padding, avatarSize, avatarSize);
+    ctx.restore();
+
+    ctx.strokeStyle = textColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(padding + avatarSize / 2, padding + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = textColor;
+    ctx.font = `${fontSize}px sans-serif`;
+
+    let y = padding + avatarSize + 30;
+    for (const line of wrappedLines) {
+        ctx.fillText(line, padding, y);
+        y += lineHeight;
+    }
+
+    if (attachmentImage) {
+        y += 10;
+        const displayWidth = width - (padding * 2);
+        const scale = displayWidth / attachmentImage.width;
+        const displayHeight = attachmentImage.height * scale;
+
+        ctx.drawImage(attachmentImage, padding, y, displayWidth, displayHeight);
+        y += displayHeight;
+    }
+
+    ctx.fillStyle = subtextColor;
+    ctx.font = `${attrFontSize}px sans-serif`;
+    y += 20;
+    for (const line of attrLines) {
+        ctx.fillText(line, padding, y);
+        y += attrLineHeight;
+    }
+}
+
+async function generateQuote(options: QuoteOptions): Promise<Buffer> {
     const padding = 40;
     const avatarSize = 64;
     const maxWidth = 500;
@@ -142,211 +192,288 @@ async function generateQuoteImage(
     const tempCtx = tempCanvas.getContext('2d');
     tempCtx.font = `${fontSize}px sans-serif`;
 
-    const quotedContent = `"${content}"`;
-    const wrappedLines = wrapText(tempCtx, quotedContent, maxWidth - padding * 2);
+    const quotedContent = options.content ? `"${options.content}"` : '';
+    const wrappedLines = options.content ? wrapText(tempCtx, quotedContent, maxWidth - padding * 2) : [];
     const textHeight = wrappedLines.length * lineHeight;
 
-    const attrText = `- ${username}`;
-
     tempCtx.font = `${attrFontSize}px sans-serif`;
+    const attrText = `- ${options.username}`;
     const attrLines = wrapText(tempCtx, attrText, maxWidth - padding * 2);
     const attrHeight = attrLines.length * attrLineHeight;
 
-    const canvasWidth = maxWidth;
-    const canvasHeight = padding + avatarSize + 20 + textHeight + 20 + attrHeight + padding;
+    const avatarResponse = await fetch(options.avatarUrl);
+    const avatarBuffer = Buffer.from(await avatarResponse.arrayBuffer());
+    const avatarImage = await loadImage(avatarBuffer);
+    const dominantColor = getDominantColor(avatarImage);
 
-    const canvas = createCanvas(canvasWidth, canvasHeight);
-    const ctx = canvas.getContext('2d');
+    let attachmentImage: Image | undefined;
+    let attachmentHeight = 0;
+    let frames: any[] = [];
 
-    const rgb = hexToRgb(userColor);
-    const luminance = getLuminance(rgb.r, rgb.g, rgb.b);
-
-    const gradient = ctx.createLinearGradient(0, 0, canvasWidth, 0);
-    gradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1)`);
-    gradient.addColorStop(0.3, `rgba(${Math.max(0, rgb.r - 20)}, ${Math.max(0, rgb.g - 20)}, ${Math.max(0, rgb.b - 20)}, 0.95)`);
-    gradient.addColorStop(0.7, `rgba(${Math.max(0, rgb.r - 50)}, ${Math.max(0, rgb.g - 50)}, ${Math.max(0, rgb.b - 50)}, 0.9)`);
-    gradient.addColorStop(1, `rgba(${Math.max(0, rgb.r - 80)}, ${Math.max(0, rgb.g - 80)}, ${Math.max(0, rgb.b - 80)}, 0.85)`);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-    const textColor = luminance > 0.5 ? '#000000' : '#ffffff';
-    const subtextColor = luminance > 0.5 ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.7)';
-
-    try {
-        const avatarResponse = await fetch(avatarUrl);
-        const avatarBuffer = Buffer.from(await avatarResponse.arrayBuffer());
-        const avatar = await loadImage(avatarBuffer);
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(padding + avatarSize / 2, padding + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-        ctx.drawImage(avatar, padding, padding, avatarSize, avatarSize);
-        ctx.restore();
-
-        ctx.strokeStyle = textColor;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(padding + avatarSize / 2, padding + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
-        ctx.stroke();
-    } catch (e) {
-        ctx.fillStyle = subtextColor;
-        ctx.beginPath();
-        ctx.arc(padding + avatarSize / 2, padding + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    ctx.fillStyle = textColor;
-    ctx.font = `${fontSize}px sans-serif`;
-
-    let y = padding + avatarSize + 30;
-    for (const line of wrappedLines) {
-        ctx.fillText(line, padding, y);
-        y += lineHeight;
-    }
-
-    ctx.fillStyle = subtextColor;
-    ctx.font = `${attrFontSize}px sans-serif`;
-    y += 10;
-    for (const line of attrLines) {
-        ctx.fillText(line, padding, y);
-        y += attrLineHeight;
-    }
-
-    return canvas.toBuffer('image/png');
-}
-
-export async function execute(message: Message, args: string[]): Promise<void> {
-    let channel: any = message.channel;
-    let messageId: string | undefined;
-
-    if (message.reference?.messageId) {
-        messageId = message.reference.messageId;
-    } else if (args.length > 0) {
-        const input = args[0];
-
-        const linkRegex = /https:\/\/discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)/;
-        const linkMatch = input.match(linkRegex);
-
-        if (linkMatch) {
-            const [, guildId, channelId, msgId] = linkMatch;
-
-            if (guildId !== message.guildId) {
-                throw new Error('Message must be from this server');
-            }
-
+    if (options.attachmentUrl) {
+        if (options.isGif) {
             try {
-                channel = await message.client.channels.fetch(channelId);
-                if (!channel || !channel.isTextBased()) {
-                    throw new Error('Could not find the channel');
-                }
-            } catch {
-                throw new Error('Could not find the channel');
-            }
+                const frameData = await gifFrames({ url: options.attachmentUrl, frames: 'all', outputType: 'canvas', cumulative: true });
+                frames = frameData;
+                if (frames.length > 0) {
+                    const firstFrame = frames[0];
 
-            messageId = msgId;
-        } else {
-            messageId = input;
+                    const width = firstFrame.frameInfo.width;
+                    const height = firstFrame.frameInfo.height;
+
+                    const displayWidth = maxWidth - (padding * 2);
+                    const scale = displayWidth / width;
+                    attachmentHeight = height * scale;
+                }
+            } catch (e) {
+                console.error("Failed to load GIF frames", e);
+                options.isGif = false;
+            }
+        }
+
+        if (!options.isGif) {
+            try {
+                const imgResponse = await fetch(options.attachmentUrl);
+                const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
+                attachmentImage = await loadImage(imgBuffer);
+                const displayWidth = maxWidth - (padding * 2);
+                const scale = displayWidth / attachmentImage.width;
+                attachmentHeight = attachmentImage.height * scale;
+            } catch (e) {
+                console.error("Failed to load attachment image", e);
+            }
         }
     }
 
-    if (!messageId) {
-        throw new Error('Reply to a message, provide a message ID, or a message link');
+    const canvasHeight = padding + avatarSize + (textHeight > 0 ? 20 : 0) + textHeight + (attachmentHeight > 0 ? 20 : 0) + attachmentHeight + 20 + attrHeight + padding;
+
+    if (options.isGif && frames.length > 0) {
+        const encoder = new GIFEncoder(maxWidth, Math.ceil(canvasHeight));
+        const stream = encoder.createReadStream();
+        encoder.start();
+        encoder.setRepeat(0);
+        encoder.setDelay(100);
+        encoder.setQuality(10);
+
+        const chunks: any[] = [];
+        const bufferPromise = new Promise<Buffer>((resolve, reject) => {
+            stream.on('data', (chunk) => chunks.push(chunk));
+            stream.on('end', () => resolve(Buffer.concat(chunks)));
+            stream.on('error', reject);
+        });
+
+        const canvas = createCanvas(maxWidth, Math.ceil(canvasHeight));
+        const ctx = canvas.getContext('2d');
+
+        for (const frame of frames) {
+            ctx.clearRect(0, 0, maxWidth, canvasHeight);
+
+            const frameCanvas = frame.getImage();
+        }
+
+        const frameData = await gifFrames({ url: options.attachmentUrl!, frames: 'all', outputType: 'png', cumulative: true });
+
+        for (const frame of frameData) {
+            const frameStream = frame.getImage();
+            const frameBuffer = await new Promise<Buffer>((resolve, reject) => {
+                const parts: any[] = [];
+                frameStream.on('data', (p: any) => parts.push(p));
+                frameStream.on('end', () => resolve(Buffer.concat(parts)));
+                frameStream.on('error', reject);
+            });
+
+            const frameImg = await loadImage(frameBuffer);
+
+            if (frame.frameInfo && frame.frameInfo.delay) {
+                encoder.setDelay(frame.frameInfo.delay * 10);
+            }
+
+            drawQuoteCard(ctx, maxWidth, Math.ceil(canvasHeight), options, avatarImage, dominantColor, wrappedLines, attrLines, frameImg, attachmentHeight);
+            encoder.addFrame(ctx as any);
+        }
+
+        encoder.finish();
+        return bufferPromise;
+
+    } else {
+        const canvas = createCanvas(maxWidth, Math.ceil(canvasHeight));
+        const ctx = canvas.getContext('2d');
+        await drawQuoteCard(ctx, maxWidth, Math.ceil(canvasHeight), options, avatarImage, dominantColor, wrappedLines, attrLines, attachmentImage, attachmentHeight);
+        return canvas.toBuffer('image/png');
+    }
+}
+
+export async function execute(message: Message, args: string[]): Promise<void> {
+    let targetMessage: Message | null = null;
+    let contentOverride: string | undefined;
+
+    if (message.reference?.messageId) {
+        try {
+            const channel = message.channel as TextChannel;
+            targetMessage = await channel.messages.fetch(message.reference.messageId);
+        } catch { }
     }
 
-    let quotedMessage;
-    try {
-        quotedMessage = await channel.messages.fetch(messageId);
-    } catch {
-        throw new Error('Could not find that message');
+    if (!targetMessage && args.length > 0) {
+        const input = args[0];
+        const linkMatch = input.match(/https:\/\/discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)/);
+
+        if (linkMatch) {
+            const [, guildId, channelId, msgId] = linkMatch;
+            if (guildId === message.guildId) {
+                try {
+                    const channel = await message.client.channels.fetch(channelId) as TextChannel;
+                    targetMessage = await channel.messages.fetch(msgId);
+                } catch { }
+            }
+        } else if (/^\d+$/.test(input)) {
+            try {
+                targetMessage = await (message.channel as TextChannel).messages.fetch(input);
+            } catch {
+                // not a message id
+            }
+        }
     }
 
-    if (!quotedMessage.content) {
-        throw new Error('The quoted message has no text content');
+    if (!targetMessage) {
+        if (args.length === 0) {
+            throw new Error('Please provide text, a link, or reply to a message.');
+        }
+
+        const text = args.join(' ');
+
+        const urlRegex = /^(https?:\/\/[^\s]+)$/;
+        const urlMatch = text.match(urlRegex);
+        const isUrl = !!urlMatch;
+        const isGif = isUrl && (text.endsWith('.gif') || text.includes('giphy') || text.includes('tenor')); // Simple check
+
+        const options: QuoteOptions = {
+            content: isUrl ? '' : text,
+            username: message.author.username,
+            avatarUrl: message.author.displayAvatarURL({ extension: 'png', size: 128 }),
+            userColor: message.member?.displayHexColor || '#5865F2',
+            timestamp: new Date(),
+            attachmentUrl: isUrl ? text : undefined,
+            isGif: isGif
+        };
+
+        const buffer = await generateQuote(options);
+        const attachment = new AttachmentBuilder(buffer, { name: isGif ? 'quote.gif' : 'quote.png' });
+        await message.reply({ files: [attachment] });
+        return;
     }
 
-    const member = quotedMessage.member as GuildMember | null;
-    const userColor = member?.displayHexColor || '#5865F2';
-    const avatarUrl = quotedMessage.author.displayAvatarURL({ extension: 'png', size: 128 });
+    const attachment = targetMessage.attachments.first();
+    const isGif = attachment?.contentType?.includes('gif') || targetMessage.content.match(/https?:\/\/[^\s]+\.gif/i) !== null;
+    let attachmentUrl = attachment?.url;
 
-    const imageBuffer = await generateQuoteImage(
-        quotedMessage.content,
-        quotedMessage.author.username,
-        avatarUrl,
-        userColor,
-        quotedMessage.createdAt
-    );
+    if (!attachmentUrl) {
+        const match = targetMessage.content.match(/(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif)|https?:\/\/media\.giphy\.com[^\s]+)/i);
+        if (match) {
+            attachmentUrl = match[0];
+            if (attachmentUrl.includes('.gif') || attachmentUrl.includes('giphy')) {
+                // it is gif
+            }
+        }
+    }
 
-    const attachment = new AttachmentBuilder(imageBuffer, { name: 'quote.png' });
-    await message.reply({ files: [attachment] });
+    let cleanContent = targetMessage.content.replace(/(https?:\/\/[^\s]+)/g, '').trim();
+
+    if (attachmentUrl) {
+        cleanContent = targetMessage.content.replace(attachmentUrl, '').trim();
+    } else {
+        cleanContent = targetMessage.content;
+    }
+
+    const options: QuoteOptions = {
+        content: cleanContent,
+        username: targetMessage.author.username,
+        avatarUrl: targetMessage.author.displayAvatarURL({ extension: 'png', size: 128 }),
+        userColor: targetMessage.member?.displayHexColor || '#5865F2',
+        timestamp: targetMessage.createdAt,
+        attachmentUrl: attachmentUrl,
+        isGif: isGif
+    };
+
+    const buffer = await generateQuote(options);
+    const resultAttachment = new AttachmentBuilder(buffer, { name: options.isGif ? 'quote.gif' : 'quote.png' });
+    await message.reply({ files: [resultAttachment] });
 }
 
 export async function executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
     const input = interaction.options.getString('message', true);
-
     await interaction.deferReply();
 
-    const linkRegex = /https:\/\/discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)/;
-    const linkMatch = input.match(linkRegex);
+    let targetMessage: Message | null = null;
 
-    let channel: any;
-    let messageId: string;
-
+    const linkMatch = input.match(/https:\/\/discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)/);
     if (linkMatch) {
         const [, guildId, channelId, msgId] = linkMatch;
-
-        if (guildId !== interaction.guildId) {
-            await interaction.editReply('Message must be from this server');
-            return;
+        if (guildId === interaction.guildId) {
+            try {
+                const channel = await interaction.client.channels.fetch(channelId) as TextChannel;
+                targetMessage = await channel.messages.fetch(msgId);
+            } catch { }
         }
-
+    } else if (/^\d+$/.test(input)) {
         try {
-            channel = await interaction.client.channels.fetch(channelId);
-            if (!channel || !channel.isTextBased()) {
-                await interaction.editReply('Could not find the channel');
-                return;
-            }
-        } catch {
-            await interaction.editReply('Could not find the channel');
-            return;
-        }
-
-        messageId = msgId;
-    } else {
-        if (!interaction.channel || !interaction.channel.isTextBased()) {
-            await interaction.editReply('This command can only be used in text channels');
-            return;
-        }
-        channel = interaction.channel;
-        messageId = input;
+            targetMessage = await (interaction.channel as TextChannel).messages.fetch(input);
+        } catch { }
     }
 
-    try {
-        const quotedMessage = await channel.messages.fetch(messageId);
+    if (!targetMessage) {
+        const text = input;
+        const urlRegex = /^(https?:\/\/[^\s]+)$/;
+        const urlMatch = text.match(urlRegex);
+        const isUrl = !!urlMatch;
+        const isGif = isUrl && (text.endsWith('.gif') || text.includes('giphy') || text.includes('tenor')) || text.includes('klipy');
 
-        if (!quotedMessage.content) {
-            await interaction.editReply('The quoted message has no text content');
-            return;
-        }
+        const options: QuoteOptions = {
+            content: isUrl ? '' : text,
+            username: interaction.user.username,
+            avatarUrl: interaction.user.displayAvatarURL({ extension: 'png', size: 128 }),
+            userColor: (interaction.member as GuildMember)?.displayHexColor || '#000000',
+            timestamp: new Date(),
+            attachmentUrl: isUrl ? text : undefined,
+            isGif: isGif
+        };
 
-        const member = quotedMessage.member as GuildMember | null;
-        const userColor = member?.displayHexColor || '#5865F2';
-        const avatarUrl = quotedMessage.author.displayAvatarURL({ extension: 'png', size: 128 });
-
-        const imageBuffer = await generateQuoteImage(
-            quotedMessage.content,
-            quotedMessage.author.username,
-            avatarUrl,
-            userColor,
-            quotedMessage.createdAt
-        );
-
-        const attachment = new AttachmentBuilder(imageBuffer, { name: 'quote.png' });
+        const buffer = await generateQuote(options);
+        const attachment = new AttachmentBuilder(buffer, { name: isGif ? 'quote.gif' : 'quote.png' });
         await interaction.editReply({ files: [attachment] });
-
-    } catch (error) {
-        console.error('Quote error:', error);
-        await interaction.editReply('Could not find that message');
+        return;
     }
+
+    const attachment = targetMessage.attachments.first();
+    let isGif = attachment?.contentType?.includes('gif') || false;
+    let attachmentUrl = attachment?.url;
+
+    if (!attachmentUrl) {
+        const match = targetMessage.content.match(/(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif)|https?:\/\/media\.giphy\.com[^\s]+)/i);
+        if (match) {
+            attachmentUrl = match[0];
+            if (attachmentUrl.includes('.gif') || attachmentUrl.includes('giphy')) {
+                isGif = true;
+            }
+        }
+    }
+
+    let cleanContent = targetMessage.content;
+    if (attachmentUrl) {
+        cleanContent = targetMessage.content.replace(attachmentUrl, '').trim();
+    }
+
+    const options: QuoteOptions = {
+        content: cleanContent,
+        username: targetMessage.author.username,
+        avatarUrl: targetMessage.author.displayAvatarURL({ extension: 'png', size: 128 }),
+        userColor: targetMessage.member?.displayHexColor || '#5865F2',
+        timestamp: targetMessage.createdAt,
+        attachmentUrl: attachmentUrl,
+        isGif: isGif
+    };
+
+    const buffer = await generateQuote(options);
+    const resultAttachment = new AttachmentBuilder(buffer, { name: isGif ? 'quote.gif' : 'quote.png' });
+    await interaction.editReply({ files: [resultAttachment] });
 }
