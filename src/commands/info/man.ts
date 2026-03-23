@@ -1,4 +1,16 @@
-import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import {
+    Message,
+    ChatInputCommandInteraction,
+    SlashCommandBuilder,
+    EmbedBuilder,
+    ActionRowBuilder,
+    StringSelectMenuBuilder,
+    StringSelectMenuInteraction,
+    ComponentType,
+} from 'discord.js';
+import { getCommandFolders } from '../../index';
+import fs from 'fs';
+import path from 'path';
 
 export const name = 'man';
 export const description = 'Display the manual page for a command';
@@ -14,22 +26,131 @@ export const data = new SlashCommandBuilder()
             .setRequired(false)
     );
 
+function getCommandsInFolder(folderName: string): string[] {
+    const commandsPath = path.join(__dirname, '..');
+    const folderPath = path.join(commandsPath, folderName);
+
+    if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+        return [];
+    }
+
+    function collectFiles(dir: string): string[] {
+        const files: string[] = [];
+        for (const item of fs.readdirSync(dir)) {
+            const itemPath = path.join(dir, item);
+            if (fs.statSync(itemPath).isDirectory()) {
+                files.push(...collectFiles(itemPath));
+            } else if (item.endsWith('.ts') || item.endsWith('.js')) {
+                files.push(itemPath);
+            }
+        }
+        return files;
+    }
+
+    const commandFiles = collectFiles(folderPath);
+    const names: string[] = [];
+
+    for (const filePath of commandFiles) {
+        try {
+            const command = require(filePath);
+            if ('name' in command) {
+                names.push(command.name);
+            }
+        } catch {
+            // skip broken commands
+        }
+    }
+
+    return names.sort((a, b) => a.localeCompare(b));
+}
+
+function buildFolderEmbed(folderName: string): EmbedBuilder {
+    const cmds = getCommandsInFolder(folderName);
+    const commandList = cmds.length > 0
+        ? cmds.map((c) => `\`${c}\``).join(', ')
+        : '_No commands found_';
+
+    return new EmbedBuilder()
+        .setTitle(`ManDB: ${folderName}/`)
+        .setDescription(commandList)
+        .setColor(0x000000)
+        .setFooter({ text: `${cmds.length} command${cmds.length !== 1 ? 's' : ''}` });
+}
+
+function buildOverviewEmbed(folders: string[]): EmbedBuilder {
+    const fields = folders.map((folder) => {
+        const cmds = getCommandsInFolder(folder);
+        return {
+            name: `${folder}/`,
+            value: cmds.length > 0
+                ? cmds.map((c) => `\`${c}\``).join(', ')
+                : '_No commands_',
+            inline: false,
+        };
+    });
+
+    return new EmbedBuilder()
+        .setTitle('ManDB')
+        .setDescription('Select a category from the dropdown below.')
+        .addFields(fields)
+        .setColor(0x000000);
+}
+
+function buildSelectMenu(folders: string[]): ActionRowBuilder<StringSelectMenuBuilder> {
+    const select = new StringSelectMenuBuilder()
+        .setCustomId('man_folder_select')
+        .setPlaceholder('Select a category...')
+        .addOptions(
+            folders.map((folder) => ({
+                label: folder,
+                value: folder,
+                description: `View commands in ${folder}/`,
+            }))
+        );
+
+    return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+}
+
 export async function execute(message: Message, args: string[]): Promise<void> {
     const { commands } = message.client;
 
     if (!args.length) {
-        const commandList = commands.map((cmd) => `\`${cmd.name}\``).join(', ');
-        const embed = new EmbedBuilder()
-            .setTitle('ManDB')
-            .setDescription(`Here are the available commands:\n${commandList}\n\nUse \`::man <command>\` for more info.`)
-            .setColor(0x0099ff);
+        const folders = getCommandFolders().sort((a, b) => a.localeCompare(b));
+        const embed = buildOverviewEmbed(folders);
+        const row = buildSelectMenu(folders);
 
-        await message.reply({ embeds: [embed] });
+        const reply = await message.reply({ embeds: [embed], components: [row] });
+
+        const collector = reply.createMessageComponentCollector({
+            componentType: ComponentType.StringSelect,
+            time: 60_000,
+        });
+
+        collector.on('collect', async (i: StringSelectMenuInteraction) => {
+            if (i.user.id !== message.author.id) {
+                await i.reply({ content: 'This menu is not for you.', ephemeral: true });
+                return;
+            }
+
+            const selectedFolder = i.values[0];
+            const folderEmbed = buildFolderEmbed(selectedFolder);
+
+            await i.update({ embeds: [folderEmbed], components: [row] });
+        });
+
+        collector.on('end', async () => {
+            try {
+                await reply.edit({ components: [] });
+            } catch {
+                // message may have been deleted
+            }
+        });
+
         return;
     }
 
-    const name = args[0].toLowerCase();
-    const command = commands.get(name) || commands.find((c) => c.aliases && c.aliases.includes(name));
+    const cmdName = args[0].toLowerCase();
+    const command = commands.get(cmdName) || commands.find((c) => c.aliases && c.aliases.includes(cmdName));
 
     if (!command) {
         await message.reply('❌ No manual entry for that command.');
@@ -54,13 +175,37 @@ export async function executeSlash(interaction: ChatInputCommandInteraction): Pr
     const commandName = interaction.options.getString('command');
 
     if (!commandName) {
-        const commandList = commands.map((cmd) => `\`${cmd.name}\``).join(', ');
-        const embed = new EmbedBuilder()
-            .setTitle('ManDB')
-            .setDescription(`Here are the available commands:\n${commandList}\n\nUse \`/man <command>\` for more info.`)
-            .setColor(0x000000);
+        const folders = getCommandFolders().sort((a, b) => a.localeCompare(b));
+        const embed = buildOverviewEmbed(folders);
+        const row = buildSelectMenu(folders);
 
-        await interaction.reply({ embeds: [embed] });
+        const reply = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
+
+        const collector = reply.createMessageComponentCollector({
+            componentType: ComponentType.StringSelect,
+            time: 60_000,
+        });
+
+        collector.on('collect', async (i: StringSelectMenuInteraction) => {
+            if (i.user.id !== interaction.user.id) {
+                await i.reply({ content: 'This menu is not for you.', ephemeral: true });
+                return;
+            }
+
+            const selectedFolder = i.values[0];
+            const folderEmbed = buildFolderEmbed(selectedFolder);
+
+            await i.update({ embeds: [folderEmbed], components: [row] });
+        });
+
+        collector.on('end', async () => {
+            try {
+                await reply.edit({ components: [] });
+            } catch {
+                // interaction may have expired
+            }
+        });
+
         return;
     }
 
