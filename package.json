@@ -28,6 +28,7 @@
     "sodium-native": "^5.0.10"
   },
   "devDependencies": {
+    "@types/gifencoder": "^2.0.3",
     "@types/node": "^20.10.0",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
