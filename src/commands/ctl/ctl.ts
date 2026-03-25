@@ -1,5 +1,6 @@
 import { Message } from 'discord.js';
-import { isOwner, getCommandFolders } from '../../index';
+import { getCommandFolders } from '../../handlers/commandLoader';
+import { isOwner } from '../../utils/permissions';
 import fs from 'fs';
 import path from 'path';
 

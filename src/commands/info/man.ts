@@ -8,7 +8,7 @@ import {
     StringSelectMenuInteraction,
     ComponentType,
 } from 'discord.js';
-import { getCommandFolders } from '../../index';
+import { getCommandFolders } from '../../handlers/commandLoader';
 import fs from 'fs';
 import path from 'path';
 
