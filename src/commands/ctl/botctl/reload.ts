@@ -1,5 +1,6 @@
 import { Message } from 'discord.js';
-import { isOwner, reloadAllCommands } from '../../../index';
+import { reloadAllCommands } from '../../../handlers/commandLoader';
+import { isOwner } from '../../../utils/permissions';
 
 export const name = 'reload';
 export const description = 'Reload all commands';

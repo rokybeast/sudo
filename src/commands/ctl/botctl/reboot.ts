@@ -1,5 +1,6 @@
 import { Message, Events } from "discord.js";
-import { isOwner, client } from "../../../index";
+import { client } from "../../../index";
+import { isOwner } from "../../../utils/permissions";
 import path from "path";
 import fs from "fs";
 

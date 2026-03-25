@@ -1,5 +1,5 @@
 import { Message } from 'discord.js';
-import { isOwner } from '../../../index';
+import { isOwner } from '../../../utils/permissions';
 
 export const name = 'shutdown';
 export const description = 'Shutdown the bot';

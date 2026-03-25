@@ -1,5 +1,6 @@
 import { Message } from 'discord.js';
-import { isOwner, loadFolder, getCommandFolders } from '../../../index';
+import { loadFolder, getCommandFolders } from '../../../handlers/commandLoader';
+import { isOwner } from '../../../utils/permissions';
 
 export const name = 'load';
 export const description = 'Load a command folder';

@@ -1,5 +1,6 @@
 import { Message } from 'discord.js';
-import { isOwner, unloadFolder, getCommandFolders } from '../../../index';
+import { unloadFolder, getCommandFolders } from '../../../handlers/commandLoader';
+import { isOwner } from '../../../utils/permissions';
 
 export const name = 'unload';
 export const description = 'Unload a command unit';
