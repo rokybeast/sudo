@@ -27,7 +27,8 @@
     "gif-frames": "^1.0.1",
     "gifencoder": "^2.0.1",
     "node-fetch": "^2.7.0",
-    "sodium-native": "^5.0.10"
+    "sodium-native": "^5.0.10",
+    "twemoji-parser": "^14.0.0"
   },
   "devDependencies": {
     "@types/gifencoder": "^2.0.3",
