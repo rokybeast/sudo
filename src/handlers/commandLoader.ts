@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 import { Client, REST, Routes } from "discord.js";
 import { client } from "../index";
+import chalk from "chalk";
+import Table from "cli-table3";
 
 const commandsPath = path.join(__dirname, "../commands");
 export const slashCommandData: any[] = [];
@@ -138,10 +140,14 @@ export function reloadAllCommands(): { total: number; units: number; errors: str
 }
 
 export function initCommands(client: Client) {
-  console.log("\nLoading commands...\n");
+  console.log(chalk.cyan("\n[INFO] Initializing commands...\n"));
   const folders = getCommandFolders();
   let totalCommands = 0;
-  const totalFolders = folders.length;
+
+  const table = new Table({
+    head: [chalk.cyan("Command"), chalk.cyan("Folder"), chalk.cyan("Status")],
+    style: { head: [], border: [] }
+  });
 
   for (let i = 0; i < folders.length; i++) {
     const folder = folders[i];
@@ -153,6 +159,10 @@ export function initCommands(client: Client) {
     for (const filePath of commandFiles) {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const command = require(filePath);
+      const fileName = path.basename(filePath);
+
+      let prefixErr = false;
+      let slashErr = false;
 
       // register command and aliases
       if ("name" in command && "execute" in command) {
@@ -164,21 +174,34 @@ export function initCommands(client: Client) {
         }
         folderCommandCount++;
       } else {
-        console.log(`  [WARNING] The command at ${filePath} is missing a required "name" or "execute" property.`);
+        prefixErr = true;
       }
 
       if ("data" in command && "executeSlash" in command) {
         client.slashCommands.set(command.data.name, command);
         slashCommandData.push(command.data.toJSON());
       } else {
-        console.log(`  [WARNING] The command at ${filePath} is missing a required "data" or "executeSlash" property.`);
+        slashErr = true;
       }
+
+      const commandName = command.name || (command.data ? command.data.name : fileName);
+      let statusText = chalk.green("[OK]");
+      
+      if (prefixErr && slashErr) {
+        statusText = chalk.red("[ERROR] Missing exports");
+      } else if (prefixErr) {
+        statusText = chalk.yellow("[WARNING] Missing prefix");
+      } else if (slashErr) {
+        statusText = chalk.yellow("[WARNING] Missing slash");
+      }
+
+      table.push([commandName, folder, statusText]);
     }
 
     loadedFolders.add(folder);
     totalCommands += folderCommandCount;
-    console.log(`[${i + 1}/${totalFolders}] ${folder}/ → ${folderCommandCount} command${folderCommandCount !== 1 ? "s" : ""} loaded`);
   }
 
-  console.log(`\nAll folders loaded (${totalCommands} commands total)\n`);
+  console.log(table.toString());
+  console.log(chalk.green(`\n[OK] All ${totalCommands} commands loaded successfully!\n`));
 }
