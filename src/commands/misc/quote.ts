@@ -4,6 +4,7 @@ import fetch from 'node-fetch';
 import GIFEncoder from 'gifencoder';
 import gifFrames from 'gif-frames';
 import { Stream } from 'stream';
+import { parse as parseTwemoji } from 'twemoji-parser';
 
 export const name = 'quote';
 export const description = 'Generate a quote image from a message';
@@ -43,53 +44,138 @@ function getDominantColor(image: Image): { r: number, g: number, b: number } {
     return { r, g, b };
 }
 
-function wrapText(ctx: any, text: string, maxWidth: number): string[] {
-    const paragraphs = text.split('\n');
-    const lines: string[] = [];
+interface TextSpan {
+    type: 'text' | 'emoji';
+    content: string;
+    url?: string;
+}
 
-    for (const paragraph of paragraphs) {
-        const words = paragraph.split(' ');
-        let currentLine = '';
-
-        for (const word of words) {
-            const wordWidth = ctx.measureText(word).width;
-            if (wordWidth > maxWidth) {
-                if (currentLine) {
-                    lines.push(currentLine);
-                    currentLine = '';
-                }
-                let remaining = word;
-                while (remaining.length > 0) {
-                    let chars = '';
-                    for (let i = 0; i < remaining.length; i++) {
-                        const testChars = remaining.slice(0, i + 1);
-                        if (ctx.measureText(testChars).width > maxWidth) {
-                            break;
-                        }
-                        chars = testChars;
-                    }
-                    if (chars.length === 0) chars = remaining[0];
-                    lines.push(chars);
-                    remaining = remaining.slice(chars.length);
-                }
+function parseTextToSpans(text: string): TextSpan[] {
+    const spans: TextSpan[] = [];
+    const customEmojiRegex = /<(a?):(\w+):(\d+)>/g;
+    let match;
+    let lastIndex = 0;
+    
+    while ((match = customEmojiRegex.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            spans.push({ type: 'text', content: text.substring(lastIndex, match.index) });
+        }
+        
+        const animated = match[1] === 'a';
+        const name = match[2];
+        const id = match[3];
+        const ext = animated ? 'gif' : 'png';
+        const url = `https://cdn.discordapp.com/emojis/${id}.${ext}`;
+        
+        spans.push({ type: 'emoji', content: name, url });
+        lastIndex = customEmojiRegex.lastIndex;
+    }
+    
+    if (lastIndex < text.length) {
+        spans.push({ type: 'text', content: text.substring(lastIndex) });
+    }
+    
+    const finalSpans: TextSpan[] = [];
+    for (const span of spans) {
+        if (span.type === 'emoji') {
+            finalSpans.push(span);
+        } else {
+            const twemojis = parseTwemoji(span.content);
+            if (twemojis.length === 0) {
+                finalSpans.push(span);
                 continue;
             }
-
-            const testLine = currentLine ? `${currentLine} ${word}` : word;
-            const metrics = ctx.measureText(testLine);
-
-            if (metrics.width > maxWidth && currentLine) {
-                lines.push(currentLine);
-                currentLine = word;
-            } else {
-                currentLine = testLine;
+            
+            let tLastIndex = 0;
+            for (const te of twemojis) {
+                if (te.indices[0] > tLastIndex) {
+                    finalSpans.push({ type: 'text', content: span.content.substring(tLastIndex, te.indices[0]) });
+                }
+                finalSpans.push({ type: 'emoji', content: te.text, url: te.url });
+                tLastIndex = te.indices[1];
+            }
+            
+            if (tLastIndex < span.content.length) {
+                finalSpans.push({ type: 'text', content: span.content.substring(tLastIndex) });
             }
         }
+    }
+    
+    return finalSpans;
+}
 
-        if (currentLine) {
-            lines.push(currentLine);
+async function fetchEmojis(spans: TextSpan[]): Promise<Record<string, Image>> {
+    const images: Record<string, Image> = {};
+    const fetchPromises = spans
+        .filter(s => s.type === 'emoji' && s.url && !images[s.url])
+        .map(async (s) => {
+            if (!s.url || images[s.url]) return;
+            try {
+                const res = await fetch(s.url);
+                const buffer = Buffer.from(await res.arrayBuffer());
+                const img = await loadImage(buffer);
+                images[s.url] = img;
+            } catch (e) {
+                console.error("Failed to load emoji", s.url, e);
+            }
+        });
+    await Promise.all(fetchPromises);
+    return images;
+}
+
+interface WrappedLine {
+    spans: TextSpan[];
+    width: number;
+}
+
+function wrapTextWithEmojis(ctx: any, spans: TextSpan[], maxWidth: number, emojiSize: number): WrappedLine[] {
+    const lines: WrappedLine[] = [];
+    let currentLine: TextSpan[] = [];
+    let currentLineWidth = 0;
+
+    const pushLine = () => {
+        lines.push({ spans: currentLine, width: currentLineWidth });
+        currentLine = [];
+        currentLineWidth = 0;
+    };
+
+    for (let span of spans) {
+        if (span.type === 'emoji') {
+             if (currentLineWidth + emojiSize > maxWidth && currentLineWidth > 0) {
+                 pushLine();
+             }
+             currentLine.push({ type: 'emoji', content: span.content, url: span.url });
+             currentLineWidth += emojiSize;
+        } else {
+             const paragraphs = span.content.split('\n');
+             for (let i = 0; i < paragraphs.length; i++) {
+                 if (i > 0) pushLine();
+                 
+                 const p = paragraphs[i];
+                 if (!p && i < paragraphs.length - 1) continue;
+
+                 const words = p.split(' ');
+                 for (let j = 0; j < words.length; j++) {
+                      let word = words[j];
+                      if (j < words.length - 1) word += ' ';
+
+                      if (!word) continue;
+
+                      const cleanWordWidth = ctx.measureText(word.trimEnd()).width;
+                      const wordWidth = ctx.measureText(word).width;
+
+                      if (currentLineWidth + cleanWordWidth > maxWidth && currentLineWidth > 0) {
+                          pushLine();
+                      }
+                      
+                      currentLine.push({ type: 'text', content: word });
+                      currentLineWidth += wordWidth;
+                 }
+             }
         }
     }
+
+    if (currentLine.length > 0) pushLine();
 
     return lines;
 }
@@ -111,8 +197,9 @@ async function drawQuoteCard(
     options: QuoteOptions,
     avatarImage: Image,
     dominantColor: { r: number, g: number, b: number },
-    wrappedLines: string[],
-    attrLines: string[],
+    wrappedLines: WrappedLine[],
+    attrLines: WrappedLine[],
+    emojiImages: Record<string, Image>,
     attachmentImage?: Image,
     attachmentHeight: number = 0
 ) {
@@ -156,7 +243,18 @@ async function drawQuoteCard(
 
     let y = padding + avatarSize + 30;
     for (const line of wrappedLines) {
-        ctx.fillText(line, padding, y);
+        let x = padding;
+        for (const span of line.spans) {
+            if (span.type === 'emoji') {
+                if (span.url && emojiImages[span.url]) {
+                    ctx.drawImage(emojiImages[span.url], x, y - fontSize + 4, fontSize, fontSize);
+                }
+                x += fontSize;
+            } else {
+                ctx.fillText(span.content, x, y);
+                x += ctx.measureText(span.content).width;
+            }
+        }
         y += lineHeight;
     }
 
@@ -174,9 +272,38 @@ async function drawQuoteCard(
     ctx.font = `${attrFontSize}px sans-serif`;
     y += 20;
     for (const line of attrLines) {
-        ctx.fillText(line, padding, y);
+        let x = padding;
+        for (const span of line.spans) {
+            if (span.type === 'emoji') {
+                if (span.url && emojiImages[span.url]) {
+                    ctx.drawImage(emojiImages[span.url], x, y - attrFontSize + 4, attrFontSize, attrFontSize);
+                }
+                x += attrFontSize;
+            } else {
+                ctx.fillText(span.content, x, y);
+                x += ctx.measureText(span.content).width;
+            }
+        }
         y += attrLineHeight;
     }
+}
+
+async function resolveGifUrl(url: string, initialHtml?: string): Promise<string> {
+    try {
+        const html = initialHtml || await (await fetch(url)).text();
+        const metaMatch = html.match(/<meta[^>]+(?:property="og:image"|name="twitter:image")[^>]+content="([^"]+\.gif[^"]*)"/i) 
+                        || html.match(/<meta[^>]+content="([^"]+\.gif[^"]*)"[^>]+(?:property="og:image"|name="twitter:image")/i);
+        if (metaMatch) return metaMatch[1];
+
+        const tenorMatch = html.match(/(https:\/\/media\.tenor\.com\/[^\/]+\/[^"'\s]+\.gif)/i);
+        if (tenorMatch) return tenorMatch[1];
+
+        const giphyMatch = html.match(/(https:\/\/media\d*\.giphy\.com\/media\/[^"'\s]+\/giphy\.gif)/i);
+        if (giphyMatch) return giphyMatch[1];
+    } catch (e) {
+        console.error("Failed to resolve true GIF URL", e);
+    }
+    return url;
 }
 
 async function generateQuote(options: QuoteOptions): Promise<Buffer> {
@@ -193,13 +320,18 @@ async function generateQuote(options: QuoteOptions): Promise<Buffer> {
     tempCtx.font = `${fontSize}px sans-serif`;
 
     const quotedContent = options.content ? `"${options.content}"` : '';
-    const wrappedLines = options.content ? wrapText(tempCtx, quotedContent, maxWidth - padding * 2) : [];
+    const spans = options.content ? parseTextToSpans(quotedContent) : [];
+    const wrappedLines = wrapTextWithEmojis(tempCtx, spans, maxWidth - padding * 2, fontSize);
     const textHeight = wrappedLines.length * lineHeight;
 
     tempCtx.font = `${attrFontSize}px sans-serif`;
     const attrText = `- ${options.username}`;
-    const attrLines = wrapText(tempCtx, attrText, maxWidth - padding * 2);
+    const attrSpans = parseTextToSpans(attrText);
+    const attrLines = wrapTextWithEmojis(tempCtx, attrSpans, maxWidth - padding * 2, attrFontSize);
     const attrHeight = attrLines.length * attrLineHeight;
+
+    const allSpans = [...spans, ...attrSpans];
+    const emojiImages = await fetchEmojis(allSpans);
 
     const avatarResponse = await fetch(options.avatarUrl);
     const avatarBuffer = Buffer.from(await avatarResponse.arrayBuffer());
@@ -213,17 +345,40 @@ async function generateQuote(options: QuoteOptions): Promise<Buffer> {
     if (options.attachmentUrl) {
         if (options.isGif) {
             try {
-                const frameData = await gifFrames({ url: options.attachmentUrl, frames: 'all', outputType: 'canvas', cumulative: true });
-                frames = frameData;
-                if (frames.length > 0) {
-                    const firstFrame = frames[0];
+                let res = await fetch(options.attachmentUrl);
+                let contentType = res.headers.get('content-type') || '';
+                
+                if (contentType.includes('text/html')) {
+                    const html = await res.text();
+                    options.attachmentUrl = await resolveGifUrl(options.attachmentUrl, html);
+                    res = await fetch(options.attachmentUrl);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    contentType = res.headers.get('content-type') || '';
+                } else if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
 
-                    const width = firstFrame.frameInfo.width;
-                    const height = firstFrame.frameInfo.height;
-
+                if (!contentType.includes('gif')) {
+                    // It is a webp, png, mp4 or something else, fall back to static image processing
+                    options.isGif = false;
+                    const imgBuffer = Buffer.from(await res.arrayBuffer());
+                    attachmentImage = await loadImage(imgBuffer);
                     const displayWidth = maxWidth - (padding * 2);
-                    const scale = displayWidth / width;
-                    attachmentHeight = height * scale;
+                    const scale = displayWidth / attachmentImage.width;
+                    attachmentHeight = attachmentImage.height * scale;
+                } else {
+                    const gifBuffer = Buffer.from(await res.arrayBuffer());
+                    const frameData = await gifFrames({ url: gifBuffer, frames: 'all', outputType: 'png', cumulative: true });
+                    frames = frameData;
+                    if (frames.length > 0) {
+                        const firstFrame = frames[0];
+                        const width = firstFrame.frameInfo.width;
+                        const height = firstFrame.frameInfo.height;
+
+                        const displayWidth = maxWidth - (padding * 2);
+                        const scale = displayWidth / width;
+                        attachmentHeight = height * scale;
+                    }
                 }
             } catch (e) {
                 console.error("Failed to load GIF frames", e);
@@ -268,12 +423,6 @@ async function generateQuote(options: QuoteOptions): Promise<Buffer> {
         for (const frame of frames) {
             ctx.clearRect(0, 0, maxWidth, canvasHeight);
 
-            const frameCanvas = frame.getImage();
-        }
-
-        const frameData = await gifFrames({ url: options.attachmentUrl!, frames: 'all', outputType: 'png', cumulative: true });
-
-        for (const frame of frameData) {
             const frameStream = frame.getImage();
             const frameBuffer = await new Promise<Buffer>((resolve, reject) => {
                 const parts: any[] = [];
@@ -288,7 +437,7 @@ async function generateQuote(options: QuoteOptions): Promise<Buffer> {
                 encoder.setDelay(frame.frameInfo.delay * 10);
             }
 
-            drawQuoteCard(ctx, maxWidth, Math.ceil(canvasHeight), options, avatarImage, dominantColor, wrappedLines, attrLines, frameImg, attachmentHeight);
+            await drawQuoteCard(ctx, maxWidth, Math.ceil(canvasHeight), options, avatarImage, dominantColor, wrappedLines, attrLines, emojiImages, frameImg, attachmentHeight);
             encoder.addFrame(ctx as any);
         }
 
@@ -298,7 +447,7 @@ async function generateQuote(options: QuoteOptions): Promise<Buffer> {
     } else {
         const canvas = createCanvas(maxWidth, Math.ceil(canvasHeight));
         const ctx = canvas.getContext('2d');
-        await drawQuoteCard(ctx, maxWidth, Math.ceil(canvasHeight), options, avatarImage, dominantColor, wrappedLines, attrLines, attachmentImage, attachmentHeight);
+        await drawQuoteCard(ctx, maxWidth, Math.ceil(canvasHeight), options, avatarImage, dominantColor, wrappedLines, attrLines, emojiImages, attachmentImage, attachmentHeight);
         return canvas.toBuffer('image/png');
     }
 }
@@ -311,6 +460,9 @@ export async function execute(message: Message, args: string[]): Promise<void> {
         try {
             const channel = message.channel as TextChannel;
             targetMessage = await channel.messages.fetch(message.reference.messageId);
+            if (args.length > 0) {
+                contentOverride = args.join(' ').trim();
+            }
         } catch { }
     }
 
@@ -324,11 +476,13 @@ export async function execute(message: Message, args: string[]): Promise<void> {
                 try {
                     const channel = await message.client.channels.fetch(channelId) as TextChannel;
                     targetMessage = await channel.messages.fetch(msgId);
+                    if (args.length > 1) contentOverride = args.slice(1).join(' ').trim();
                 } catch { }
             }
         } else if (/^\d+$/.test(input)) {
             try {
                 targetMessage = await (message.channel as TextChannel).messages.fetch(input);
+                if (args.length > 1) contentOverride = args.slice(1).join(' ').trim();
             } catch {
                 // not a message id
             }
@@ -364,7 +518,7 @@ export async function execute(message: Message, args: string[]): Promise<void> {
     }
 
     const attachment = targetMessage.attachments.first();
-    const isGif = attachment?.contentType?.includes('gif') || targetMessage.content.match(/https?:\/\/[^\s]+\.gif/i) !== null;
+    let isGif = attachment?.contentType?.includes('gif') || targetMessage.content.match(/https?:\/\/[^\s]+\.gif/i) !== null;
     let attachmentUrl = attachment?.url;
 
     if (!attachmentUrl) {
@@ -372,17 +526,31 @@ export async function execute(message: Message, args: string[]): Promise<void> {
         if (match) {
             attachmentUrl = match[0];
             if (attachmentUrl.includes('.gif') || attachmentUrl.includes('giphy')) {
-                // it is gif
+                isGif = true;
+            }
+        } else if (targetMessage.embeds && targetMessage.embeds.length > 0) {
+            const embed = targetMessage.embeds[0];
+            if (embed.video && embed.video.url && embed.video.url.includes('.gif')) {
+                attachmentUrl = embed.video.url;
+                isGif = true;
+            } else if (embed.thumbnail && embed.thumbnail.url && embed.thumbnail.url.includes('.gif')) {
+                attachmentUrl = embed.thumbnail.url;
+                isGif = true;
+            } else if (embed.image && embed.image.url) {
+                attachmentUrl = embed.image.url;
+                isGif = attachmentUrl.includes('.gif');
             }
         }
     }
 
-    let cleanContent = targetMessage.content.replace(/(https?:\/\/[^\s]+)/g, '').trim();
-
-    if (attachmentUrl) {
-        cleanContent = targetMessage.content.replace(attachmentUrl, '').trim();
+    let cleanContent = '';
+    if (contentOverride) {
+        cleanContent = contentOverride;
     } else {
-        cleanContent = targetMessage.content;
+        cleanContent = targetMessage.content.replace(/(https?:\/\/[^\s]+(?:tenor\.com|giphy\.com|png|jpg|jpeg|gif|webp)[^\s]*)/ig, '').trim();
+        if (attachmentUrl && cleanContent === targetMessage.content) {
+            cleanContent = targetMessage.content.replace(attachmentUrl, '').trim();
+        }
     }
 
     const options: QuoteOptions = {
@@ -405,6 +573,7 @@ export async function executeSlash(interaction: ChatInputCommandInteraction): Pr
     await interaction.deferReply();
 
     let targetMessage: Message | null = null;
+    let contentOverride: string | undefined;
 
     const linkMatch = input.match(/https:\/\/discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)/);
     if (linkMatch) {
@@ -413,11 +582,15 @@ export async function executeSlash(interaction: ChatInputCommandInteraction): Pr
             try {
                 const channel = await interaction.client.channels.fetch(channelId) as TextChannel;
                 targetMessage = await channel.messages.fetch(msgId);
+                const queryParts = input.split(/\s+/);
+                if (queryParts.length > 1) contentOverride = queryParts.slice(1).join(' ').trim();
             } catch { }
         }
-    } else if (/^\d+$/.test(input)) {
+    } else if (/^\d+$/.test(input.split(/\s+/)[0])) {
         try {
-            targetMessage = await (interaction.channel as TextChannel).messages.fetch(input);
+            const queryParts = input.split(/\s+/);
+            targetMessage = await (interaction.channel as TextChannel).messages.fetch(queryParts[0]);
+            if (queryParts.length > 1) contentOverride = queryParts.slice(1).join(' ').trim();
         } catch { }
     }
 
@@ -455,12 +628,29 @@ export async function executeSlash(interaction: ChatInputCommandInteraction): Pr
             if (attachmentUrl.includes('.gif') || attachmentUrl.includes('giphy')) {
                 isGif = true;
             }
+        } else if (targetMessage.embeds && targetMessage.embeds.length > 0) {
+            const embed = targetMessage.embeds[0];
+            if (embed.video && embed.video.url && embed.video.url.includes('.gif')) {
+                attachmentUrl = embed.video.url;
+                isGif = true;
+            } else if (embed.thumbnail && embed.thumbnail.url && embed.thumbnail.url.includes('.gif')) {
+                attachmentUrl = embed.thumbnail.url;
+                isGif = true;
+            } else if (embed.image && embed.image.url) {
+                attachmentUrl = embed.image.url;
+                isGif = attachmentUrl.includes('.gif');
+            }
         }
     }
 
-    let cleanContent = targetMessage.content;
-    if (attachmentUrl) {
-        cleanContent = targetMessage.content.replace(attachmentUrl, '').trim();
+    let cleanContent = '';
+    if (contentOverride) {
+        cleanContent = contentOverride;
+    } else {
+        cleanContent = targetMessage.content.replace(/(https?:\/\/[^\s]+(?:tenor\.com|giphy\.com|png|jpg|jpeg|gif|webp)[^\s]*)/ig, '').trim();
+        if (attachmentUrl && cleanContent === targetMessage.content) {
+            cleanContent = targetMessage.content.replace(attachmentUrl, '').trim();
+        }
     }
 
     const options: QuoteOptions = {
