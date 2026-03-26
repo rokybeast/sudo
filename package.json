@@ -9,8 +9,10 @@
   "scripts": {
     "build:tee": "g++ src/lib/tee.cpp -o src/lib/tee",
     "build:reboot": "g++ src/lib/reboot.cpp -o src/lib/reboot",
-    "prestart": "npm run build:tee",
-    "predev": "npm run build:tee",
+    "build:exec": "g++ src/lib/exec.cpp -o src/lib/exec",
+    "build:lib": "npm run build:tee && npm run build:reboot && npm run build:exec",
+    "prestart": "npm run build:lib",
+    "predev": "npm run build:lib",
     "build": "tsc",
     "start": "FORCE_COLOR=1 node dist/index.js 2>&1 | src/lib/tee",
     "dev": "FORCE_COLOR=1 npx tsx watch src/index.ts 2>&1 | src/lib/tee",
