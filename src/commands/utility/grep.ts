@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, TextChannel, EmbedBuilder } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 
 export const name = 'grep';
 export const description = 'Search for a pattern in the last N messages';
