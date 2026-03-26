@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 import fetch from 'node-fetch';
 
 export const name = 'aur';
@@ -78,11 +79,11 @@ async function searchAur(context: Message | ChatInputCommandInteraction, pkgName
         const deps = pkg.Depends ? pkg.Depends.join(', ') : 'None';
         const installCmd = `yay -S ${pkg.Name}`;
 
-        const embed = new EmbedBuilder()
+        const embed = createEmbed()
             .setTitle(`${pkg.Name} ${pkg.Version}`)
             .setURL(`https://aur.archlinux.org/packages/${pkg.Name}/`)
             .setDescription(pkg.Description || 'No description provided.')
-            .setColor(0x000000)
+            
             .addFields(
                 { name: 'Maintainer', value: pkg.Maintainer || 'Orphan', inline: true },
                 { name: 'Votes', value: pkg.NumVotes.toString(), inline: true },
@@ -97,7 +98,7 @@ async function searchAur(context: Message | ChatInputCommandInteraction, pkgName
 
         if (pkg.OutOfDate) {
             embed.addFields({ name: 'Status', value: 'Flagged Out-of-Date', inline: true });
-            embed.setColor(0x000000);
+            embed;
         }
 
         if (context instanceof Message) await context.reply({ embeds: [embed] });

@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 import fetch from 'node-fetch';
 
 export const name = 'xbps';
@@ -66,11 +67,11 @@ async function searchXbps(context: Message | ChatInputCommandInteraction, pkgNam
 
         const installCmd = `sudo xbps-install ${pkg.name}`;
 
-        const embed = new EmbedBuilder()
+        const embed = createEmbed()
             .setTitle(`${pkg.name} ${pkg.version}_${pkg.revision}`)
             .setURL(`https://voidlinux.org/packages/?q=${pkg.name}`)
             .setDescription(pkg.short_desc || 'No description provided.')
-            .setColor(0x000000)
+            
             .addFields(
                 { name: 'Repository', value: pkg.repository || 'Unknown', inline: true },
                 { name: 'License', value: pkg.license || 'Unknown', inline: true },

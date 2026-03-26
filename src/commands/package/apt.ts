@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 import fetch from 'node-fetch';
 
 export const name = 'apt';
@@ -68,11 +69,11 @@ async function searchApt(context: Message | ChatInputCommandInteraction, pkgName
         const latestVersion = infoData.versions?.[0];
         const installCmd = `sudo apt install ${pkg.name}`;
 
-        const embed = new EmbedBuilder()
+        const embed = createEmbed()
             .setTitle(`${pkg.name} ${latestVersion?.version || 'unknown'}`)
             .setURL(`https://packages.debian.org/search?keywords=${pkg.name}`)
             .setDescription(latestVersion?.area || 'No description provided.')
-            .setColor(0x000000)
+            
             .addFields(
                 { name: 'Suite', value: latestVersion?.suites?.join(', ') || 'Unknown', inline: true },
                 { name: 'Area', value: latestVersion?.area || 'Unknown', inline: true },

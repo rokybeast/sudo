@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder, ColorResolvable, GuildMember } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 
 
 export const name = 'cat';
@@ -38,10 +39,10 @@ async function sendUserInfo(
     const avatarUrl = user.displayAvatarURL({ extension: 'png', size: 1024 });
     const color = member?.displayHexColor || 0x000000;
 
-    const embed = new EmbedBuilder()
+    const embed = createEmbed()
         .setAuthor({ name: user.tag, iconURL: avatarUrl })
         .setThumbnail(avatarUrl)
-        .setColor(color)
+        
         .addFields(
             { name: 'ID', value: user.id, inline: true },
             { name: 'Bot', value: user.bot ? 'Yes' : 'No', inline: true },

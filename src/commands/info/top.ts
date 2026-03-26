@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder, ChannelType, version as djsVersion } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 import os from 'os';
 
 export const name = 'top';
@@ -50,7 +51,7 @@ async function sendTop(context: Message | ChatInputCommandInteraction, view: str
         return;
     }
 
-    const embed = new EmbedBuilder().setColor(0x000000).setTimestamp();
+    const embed = createEmbed().setTimestamp();
 
     // Views
     if (view === 'system' || view.startsWith('sys')) {

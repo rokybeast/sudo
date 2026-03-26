@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 import fetch from 'node-fetch';
 
 export const name = 'dnf';
@@ -64,11 +65,11 @@ async function searchDnf(context: Message | ChatInputCommandInteraction, pkgName
 
         const installCmd = `sudo dnf install ${pkg.name}`;
 
-        const embed = new EmbedBuilder()
+        const embed = createEmbed()
             .setTitle(pkg.name)
             .setURL(`https://src.fedoraproject.org/rpms/${pkg.name}`)
             .setDescription(pkg.description || 'No description provided.')
-            .setColor(0x000000)
+            
             .addFields(
                 { name: 'Namespace', value: pkg.namespace || 'rpms', inline: true },
                 { name: 'Installation', value: `\`${installCmd}\``, inline: false }

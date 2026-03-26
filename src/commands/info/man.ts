@@ -9,6 +9,7 @@ import {
     ComponentType,
 } from 'discord.js';
 import { getCommandFolders } from '../../handlers/commandLoader';
+import { createEmbed } from '../../utils/embed';
 import fs from 'fs';
 import path from 'path';
 
@@ -70,10 +71,10 @@ function buildFolderEmbed(folderName: string): EmbedBuilder {
         ? cmds.map((c) => `\`${c}\``).join(', ')
         : '_No commands found_';
 
-    return new EmbedBuilder()
+    return createEmbed()
         .setTitle(`ManDB: ${folderName}/`)
         .setDescription(commandList)
-        .setColor(0x000000)
+        
         .setFooter({ text: `${cmds.length} command${cmds.length !== 1 ? 's' : ''}` });
 }
 
@@ -89,11 +90,11 @@ function buildOverviewEmbed(folders: string[]): EmbedBuilder {
         };
     });
 
-    return new EmbedBuilder()
+    return createEmbed()
         .setTitle('ManDB')
         .setDescription('Select a category from the dropdown below.')
         .addFields(fields)
-        .setColor(0x000000);
+        ;
 }
 
 function buildSelectMenu(folders: string[]): ActionRowBuilder<StringSelectMenuBuilder> {
@@ -157,7 +158,7 @@ export async function execute(message: Message, args: string[]): Promise<void> {
         return;
     }
 
-    const embed = new EmbedBuilder()
+    const embed = createEmbed()
         .setTitle(`ManDB: ${command.name}`)
         .setDescription(command.description)
         .addFields(
@@ -165,7 +166,7 @@ export async function execute(message: Message, args: string[]): Promise<void> {
             { name: 'Description', value: command.description, inline: true },
             { name: 'Aliases', value: command.aliases ? command.aliases.map((a) => `\`${a}\``).join(', ') : 'None', inline: true }
         )
-        .setColor(0x000000);
+        ;
 
     await message.reply({ embeds: [embed] });
 }
@@ -217,7 +218,7 @@ export async function executeSlash(interaction: ChatInputCommandInteraction): Pr
         return;
     }
 
-    const embed = new EmbedBuilder()
+    const embed = createEmbed()
         .setTitle(`ManDB: ${command.name}`)
         .setDescription(command.description)
         .addFields(
@@ -225,7 +226,7 @@ export async function executeSlash(interaction: ChatInputCommandInteraction): Pr
             { name: 'Description', value: command.description, inline: true },
             { name: 'Aliases', value: command.aliases ? command.aliases.map((a) => `\`${a}\``).join(', ') : 'None', inline: true }
         )
-        .setColor(0x000000);
+        ;
 
     await interaction.reply({ embeds: [embed] });
 }

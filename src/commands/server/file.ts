@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder, ChannelType, GuildBasedChannel, TextChannel, VoiceChannel, ThreadChannel, StageChannel } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 
 export const name = 'file';
 export const description = 'Display detailed channel information';
@@ -80,9 +81,9 @@ async function sendChannelInfo(
     context: Message | ChatInputCommandInteraction,
     channel: GuildBasedChannel
 ) {
-    const embed = new EmbedBuilder()
+    const embed = createEmbed()
         .setTitle(`${channel.name}`)
-        .setColor(0x000000)
+        
         .addFields(
             { name: 'ID', value: channel.id, inline: true },
             { name: 'Type', value: getChannelTypeString(channel.type), inline: true },

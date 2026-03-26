@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 import fetch from 'node-fetch';
 
 export const name = 'nix';
@@ -87,11 +88,11 @@ async function searchNix(context: Message | ChatInputCommandInteraction, pkgName
         const licenses = pkg.package_license?.map((l: any) => l.fullName).join(', ') || 'Unknown';
         const maintainers = pkg.package_maintainers?.map((m: any) => m.name).join(', ') || 'Unknown';
 
-        const embed = new EmbedBuilder()
+        const embed = createEmbed()
             .setTitle(`${pkg.package_pname} ${pkg.package_pversion}`)
             .setURL(`https://search.nixos.org/packages?query=${pkg.package_pname}`)
             .setDescription(pkg.package_description || 'No description provided.')
-            .setColor(0x000000)
+            
             .addFields(
                 { name: 'Attribute', value: pkg.package_attr_name, inline: true },
                 { name: 'License', value: licenses, inline: true },

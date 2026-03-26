@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 import fetch from 'node-fetch';
 
 export const name = 'zypper';
@@ -65,11 +66,11 @@ async function searchZypper(context: Message | ChatInputCommandInteraction, pkgN
 
         const installCmd = `sudo zypper install ${pkg.name}`;
 
-        const embed = new EmbedBuilder()
+        const embed = createEmbed()
             .setTitle(`${pkg.name} ${pkg.version || ''}`)
             .setURL(`https://software.opensuse.org/package/${pkg.name}`)
             .setDescription(pkg.summary || pkg.description || 'No description provided.')
-            .setColor(0x000000)
+            
             .addFields(
                 { name: 'Project', value: pkg.project || 'openSUSE:Factory', inline: true },
                 { name: 'Installation', value: `\`${installCmd}\``, inline: false }

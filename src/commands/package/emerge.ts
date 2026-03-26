@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 import fetch from 'node-fetch';
 
 export const name = 'emerge';
@@ -66,11 +67,11 @@ async function searchEmerge(context: Message | ChatInputCommandInteraction, pkgN
         const installCmd = `sudo emerge ${pkg.category}/${pkg.name}`;
         const maintainers = pkg.maintainers?.map((m: any) => m.name || m.email).join(', ') || 'Unknown';
 
-        const embed = new EmbedBuilder()
+        const embed = createEmbed()
             .setTitle(`${pkg.category}/${pkg.name}`)
             .setURL(`https://packages.gentoo.org/packages/${pkg.category}/${pkg.name}`)
             .setDescription(pkg.description || 'No description provided.')
-            .setColor(0x000000)
+            
             .addFields(
                 { name: 'Category', value: pkg.category, inline: true },
                 { name: 'License', value: pkg.licenses?.join(', ') || 'Unknown', inline: true },

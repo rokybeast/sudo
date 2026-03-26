@@ -1,4 +1,5 @@
 import { Message, EmbedBuilder } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 import fetch from 'node-fetch';
 
 export const name = 'compile';
@@ -131,10 +132,10 @@ async function compileAndSend(message: Message, language: string, code: string) 
         const runtime = await findRuntime(language);
 
         if (!runtime) {
-            const embed = new EmbedBuilder()
+            const embed = createEmbed()
                 .setTitle('Compilation Error')
                 .setDescription(`Unsupported language: \`${language}\``)
-                .setColor(0xff0000);
+                ;
 
             await message.reply({ embeds: [embed] });
             return;
@@ -144,10 +145,10 @@ async function compileAndSend(message: Message, language: string, code: string) 
 
         if (result.compile && result.compile.code !== 0) {
             const errorOutput = result.compile.stderr || result.compile.output || 'Compilation failed';
-            const embed = new EmbedBuilder()
+            const embed = createEmbed()
                 .setTitle('Compilation Error')
                 .setDescription(`\`\`\`\n${truncateOutput(errorOutput)}\n\`\`\``)
-                .setColor(0xff0000)
+                
                 .setFooter({ text: `${runtime.language} ${runtime.version}` });
 
             await message.reply({ embeds: [embed] });
@@ -157,10 +158,10 @@ async function compileAndSend(message: Message, language: string, code: string) 
         const hasError = result.run.code !== 0 || result.run.stderr;
         const output = result.run.output || result.run.stdout || result.run.stderr || 'No output';
 
-        const embed = new EmbedBuilder()
+        const embed = createEmbed()
             .setTitle(hasError ? 'Runtime Error' : 'Output')
             .setDescription(`\`\`\`\n${truncateOutput(output)}\n\`\`\``)
-            .setColor(hasError ? 0xff0000 : 0x000000)
+            
             .setFooter({ text: `${runtime.language} ${runtime.version} | Exit code: ${result.run.code}` });
 
         await message.reply({ embeds: [embed] });
@@ -169,10 +170,10 @@ async function compileAndSend(message: Message, language: string, code: string) 
         console.error('Compile error:', error);
         const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
 
-        const embed = new EmbedBuilder()
+        const embed = createEmbed()
             .setTitle('Error')
             .setDescription(`\`\`\`\n${errorMessage}\n\`\`\``)
-            .setColor(0xff0000);
+            ;
 
         await message.reply({ embeds: [embed] });
     }

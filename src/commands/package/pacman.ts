@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 import fetch from 'node-fetch';
 
 export const name = 'pacman';
@@ -85,11 +86,11 @@ async function searchArch(context: Message | ChatInputCommandInteraction, pkgNam
         const deps = details.depends ? details.depends.join(', ') : 'None';
         const installCmd = `sudo pacman -S ${details.pkgname}`;
 
-        const embed = new EmbedBuilder()
+        const embed = createEmbed()
             .setTitle(`${details.pkgname} ${details.pkgver}-${details.pkgrel}`)
             .setURL(`https://archlinux.org/packages/${details.repo}/${details.arch}/${details.pkgname}/`)
             .setDescription(details.pkgdesc || 'No description provided.')
-            .setColor(0x000000)
+            
             .addFields(
                 { name: 'Repository', value: details.repo, inline: true },
                 { name: 'Architecture', value: details.arch, inline: true },

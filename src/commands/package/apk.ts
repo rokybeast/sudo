@@ -1,4 +1,5 @@
 import { Message, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { createEmbed } from '../../utils/embed';
 import fetch from 'node-fetch';
 
 export const name = 'apk';
@@ -53,11 +54,11 @@ async function searchApk(context: Message | ChatInputCommandInteraction, pkgName
 
         const installCmd = `apk add ${pkgName}`;
 
-        const embed = new EmbedBuilder()
+        const embed = createEmbed()
             .setTitle(pkgName)
             .setURL(`https://pkgs.alpinelinux.org/packages?name=${pkgName}`)
             .setDescription('Alpine Linux package')
-            .setColor(0x000000)
+            
             .addFields(
                 { name: 'Branch', value: 'edge', inline: true },
                 { name: 'Installation', value: `\`${installCmd}\``, inline: false }
