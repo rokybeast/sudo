@@ -6,3 +6,7 @@ fonts/
 
 # binaries
 src/lib/reboot
+src/lib/tee
+
+# logfiles
+*.log

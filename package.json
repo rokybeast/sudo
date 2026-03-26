@@ -7,9 +7,13 @@
   "type": "commonjs",
   "main": "dist/index.js",
   "scripts": {
+    "build:tee": "g++ src/lib/tee.cpp -o src/lib/tee",
+    "build:reboot": "g++ src/lib/reboot.cpp -o src/lib/reboot",
+    "prestart": "npm run build:tee",
+    "predev": "npm run build:tee",
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "npx tsx watch src/index.ts",
+    "start": "FORCE_COLOR=1 node dist/index.js 2>&1 | src/lib/tee",
+    "dev": "FORCE_COLOR=1 npx tsx watch src/index.ts 2>&1 | src/lib/tee",
     "test": "echo No Tests"
   },
   "dependencies": {
